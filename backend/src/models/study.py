@@ -10,3 +10,5 @@ class ArchiveStudy(Base):
     description:Mapped[str]=mapped_column(Text)
     source:Mapped[str]
     default_alpha:Mapped[float]=mapped_column(Double,default=.05)
+    merge_revision:Mapped[int]=mapped_column(default=0)
+    baseline_hash:Mapped[str]=mapped_column(default="")

@@ -3,6 +3,18 @@ from .robust_algorithm import fit_train,score_with_fit,training_scale,finite_mat
 from .conformal_algorithm import upper_tail_p
 from ..utils.fingerprint import fingerprint
 VERSION='train-mcd-split-conformal-v1'
+_STUDY_FIELDS=('id','code','name','description','source','default_alpha')
+_WINDOW_FIELDS=('id','origin_uid','code','split','values','note')
+def canonical_snapshot(snapshot):
+    """Strip transport/merge bookkeeping so data identity is stable.
+
+    Revision counters and branch labels describe how a value arrived, not
+    what was measured; including them would let a no-op collection change
+    an otherwise identical input hash.
+    """
+    study={k:snapshot['study'][k] for k in _STUDY_FIELDS if k in snapshot['study']}
+    windows=[{k:w[k] for k in _WINDOW_FIELDS if k in w} for w in snapshot['windows']]
+    return {"study":study,"features":snapshot['features'],"windows":windows}
 def prepare_snapshot(snapshot):
     features=sorted(snapshot['features'],key=lambda f:f['position']);codes=[f['code'] for f in features]
     if len(features)!=4 or len(set(codes))!=4 or len({f['position'] for f in features})!=4:raise ValueError("须固定4个预定义且不重复的特征")
@@ -25,5 +37,5 @@ def analyze_deviation(snapshot,alpha=.05,seed=2026):
     fit['raw_support_codes']=[w['code'] for w,m in zip(groups['train'],fit['raw_support_mask']) if m];fit['support_codes']=[w['code'] for w,m in zip(groups['train'],fit['support_mask']) if m]
     scores=[{"window":w,"d2":float(d),"p":float(p),"cal_ge_count":int(k),"selected":bool(p<=alpha)} for w,d,p,k in zip(groups['test'],test,tail['p'],tail['cal_ge_count'])]
     ecdf_values,ecdf_counts=np.unique(cal,return_counts=True);ecdf_y=np.cumsum(ecdf_counts)/len(cal)
-    canonical={"study":snapshot['study'],"features":features,"windows":rows};fit_hash=fingerprint({"version":VERSION,"features":features,"train":[{"code":w['code'],"values":w['values']} for w in groups['train']],"seed":seed,"support_fraction":.8})
+    canonical=canonical_snapshot({"study":snapshot['study'],"features":features,"windows":rows});fit_hash=fingerprint({"version":VERSION,"features":features,"train":[{"code":w['code'],"values":w['values']} for w in groups['train']],"seed":seed,"support_fraction":.8})
     return {"algorithm_version":VERSION,"study":snapshot['study'],"features":features,"counts":{s:len(g) for s,g in groups.items()},"fit":fit,"fit_hash":fit_hash,"calibration":[{"window":w,"d2":float(d)} for w,d in zip(groups['cal'],cal)],"test":scores,"calibration_ecdf":[{"d2":float(d),"cdf":float(y)} for d,y in zip(ecdf_values,ecdf_y)],"alpha":alpha,"seed":seed,"selected_count":sum(x['selected'] for x in scores),"resolution":tail['resolution'],"tail":tail['tail'],"input_snapshot":canonical,"input_hash":fingerprint({"version":VERSION,"snapshot":canonical,"alpha":alpha,"seed":seed,"support_fraction":.8}),"assumptions":"MCD适用于单峰、近对称/椭圆主群，不适合多峰。定标与MCD只用train；固定训练且cal/test独立可交换时，上尾split-conformal提供边际误报控制，不是条件保证、FDR或危险诊断。","protocol":"四特征与alpha在运行前冻结；不以test选择特征、拟合、阈值或测试分位。筛选仅为人工独立补测线索。"}

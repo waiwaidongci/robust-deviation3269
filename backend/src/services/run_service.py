@@ -6,6 +6,7 @@ from ..config.settings import REDIS_URL
 from ..utils.serialize import record
 from .study_service import get_study,create_snapshot
 from .analysis_service import prepare_snapshot
+from .merge_service import study_lock,lock_study_row,ensure_baseline,pending_conflicts
 from .audit_service import log
 queue=Redis.from_url(REDIS_URL,decode_responses=True)
 def list_runs(db):return [record(r) for r in db.query(DeviationRun).order_by(DeviationRun.id.desc())]
@@ -14,10 +15,19 @@ def get_run(db,rid):
     if not row:raise HTTPException(404,"偏离研究不存在")
     return row
 def create_run(db,data,user):
-    study=get_study(db,data.study_id);snapshot=create_snapshot(db,study)
-    try:prepare_snapshot(snapshot)
-    except ValueError as e:raise HTTPException(422,str(e))
-    row=DeviationRun(**data.model_dump(),input_snapshot=snapshot,owner=user.name);db.add(row);db.flush();log(db,user.email,"deviation.enqueue",row.id);db.commit()
+    study=get_study(db,data.study_id)
+    # Hold the study lock and its row lock across the snapshot *and* the
+    # commit, so a concurrent merge decision cannot land between the two.
+    with study_lock(study.id):
+        lock_study_row(db,study.id)
+        ensure_baseline(db,study)
+        if pending_conflicts(db,study):
+            db.commit()
+            raise HTTPException(409,"存在待裁决资料包；仅完整合并版可创建研究")
+        snapshot=create_snapshot(db,study)
+        try:prepare_snapshot(snapshot)
+        except ValueError as e:raise HTTPException(422,str(e))
+        row=DeviationRun(**data.model_dump(),input_snapshot=snapshot,owner=user.name);db.add(row);db.flush();log(db,user.email,"deviation.enqueue",row.id);db.commit()
     try:queue.rpush('deviation:jobs',row.id)
     except Exception:row.status='failed';row.error='队列不可用，请重提';db.commit();raise HTTPException(503,row.error)
     return record(row)

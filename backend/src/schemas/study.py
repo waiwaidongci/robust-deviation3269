@@ -10,3 +10,5 @@ class StudyOutput(BaseModel):
     feature_count:int
     supported:bool
     reason:str
+    merge_revision:int=0
+    pending_conflicts:int=0

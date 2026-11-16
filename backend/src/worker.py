@@ -1,12 +1,13 @@
 import json,time,traceback
 from pathlib import Path
 from .config.database import Base,engine,SessionLocal
+from .config.migrate import run_upgrade
 from .models import DeviationRun
 from .constants.status import RunStatus
 from .services.run_service import queue
 from .services.analysis_service import analyze_deviation
 from .services.audit_service import log
-Base.metadata.create_all(engine);Path("/artifacts").mkdir(exist_ok=True)
+run_upgrade();Base.metadata.create_all(engine);Path("/artifacts").mkdir(exist_ok=True)
 while True:
     Path("/artifacts/heartbeat").write_text(str(time.time()))
     job=queue.blpop("deviation:jobs",timeout=2)

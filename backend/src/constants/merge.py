@@ -1,0 +1,22 @@
+PACKAGE_FORMAT = "shuangleng-window-package-v1"
+
+# Package lifecycle.  ``resolving`` is only ever visible inside one open
+# transaction; it is never committed.
+PACKAGE_MERGED = "merged"
+PACKAGE_CONFLICT = "conflict"
+PACKAGE_REJECTED = "rejected"
+PACKAGE_IGNORED = "ignored"
+PACKAGE_STATUSES = (PACKAGE_MERGED, PACKAGE_CONFLICT, PACKAGE_REJECTED, PACKAGE_IGNORED)
+
+RESOLUTION_OURS = "ours"
+RESOLUTION_THEIRS = "theirs"
+RESOLUTION_REJECT = "reject"
+RESOLUTIONS = (RESOLUTION_OURS, RESOLUTION_THEIRS, RESOLUTION_REJECT)
+
+SPLITS = ("train", "cal", "test")
+MAX_WINDOWS = 2000
+MAX_PACKAGE_RECORDS = 2000
+MAX_CODE_LENGTH = 64
+MAX_NOTE_LENGTH = 1500
+MAX_BRANCH_LENGTH = 64
+MAX_VALUE_ABS = 1e9

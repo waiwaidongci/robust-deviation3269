@@ -42,6 +42,23 @@ seed三研究各450条，共1350窗口、12个特征定义。每研究固定trai
 
 共享RunSummary用于首页/结果/审阅；DistancePlot用于首页/结果；另有StudySelector、ScoreECDF、CovarianceMatrix及通用Notice/DataTable/StatusBadge。所有评分、计数、p与校准ECDF在Python计算，SVG只映射后端结果。
 
+## 分库往返与三方合并（来源页）
+
+来源页支持把同一批窗口导出为**资料包**，在另一分库离线修改数值、拆分与批注后回收。资料包不是整行覆盖：每行带稳定的 `origin_uid`（由研究编号+窗口编号派生，与数据库行号无关），两份分库编号重号也不会串行匹配。窗口编号是来源身份，不可在本地或分支改名；数值、split、批注各自可改。
+
+导出包同时携带**共同基线**（不可变 `study_baselines` 快照、修订号与哈希）。回收时逐字段比较三方 B=基线 / O=本库 / T=资料包：
+
+| 条件 | 结果 |
+|---|---|
+| T=基线 | 保留本库（重复或乱序回收不会撤销已合入修改） |
+| O=基线 | 采用 T（分支修改生效） |
+| T=O | 保留（双方做了相同修改） |
+| 三者皆异 | 同字段异改 → **整包待裁决**，研究不改动 |
+
+待裁决时整包挂起：不应用任何字段（包括包内本来无冲突的修改），研究列表标为不可运行，创建研究返回 409。材料负责人选边（采用该分库 / 保留本库）后，在一个事务内原子生效，并生成新的基线修订；并发裁决只有一个成功，其余 409。若待裁决期间本库又发生修改，原裁决点失效，资料包退回并要求基于新基线重新导出——不会把旧包套到新数据上。
+
+`已合入` 的资料包再次回收按（分库, 基线哈希, 内容哈希）识别为重复，返回 `replayed` 且不改写任何窗口。回收、自动合入、裁决、退回均写审计（`merge.merged/conflict/resolve_theirs/resolve_ours/stale`）。运行创建在研究与行锁内取快照，只认完整合并版；既有冻结运行与已获批 CSV 导出保持原样，合并只影响之后创建的研究。
+
 ## 算法与严格拆分
 
 固定四量按FeatureSpec.position排列，校验窗口身份与编号唯一、split仅train/cal/test且不重叠；每行四量完整、有限、绝对值≤1e9，布尔/复数训练值拒绝。运行不接受自定义features或support_fraction字段。仅train计算均值与总体尺度，先按每列最大差缩放求标准差避免平方溢出。训练至少20条；中心化定标矩阵SVD数值秩不足p、常量特征拒绝。
@@ -84,4 +101,4 @@ npm run dev
 
 .env参数：COMPOSE_PROJECT_NAME、FRONTEND_PORT、BACKEND_PORT、DB_PORT、JWT_SECRET、SEED_DEMO；DATABASE_URL/REDIS_URL由Compose定义。角色枚举在backend/constants/roles与frontend/constants/enums，参与路由鉴权和页面角色显示；运行枚举backend/constants/status与同一前端enums参与worker/StatusBadge；审阅Literal位于backend/schemas/note并在model/service与前端ReviewStatus使用；split Literal位于backend/schemas/window，分析校验与前端SplitRoles保持train/cal/test。
 
-测试脚本、关键JSON/CSV、截图及已知差异在同批 `test-artifacts/gb-0026/TESTING.md`。本项目为单worker研究工具，无来源上传、任务崩溃恢复、多worker去重、真实设备或自动告警。清理仅本题：`docker compose down -v --remove-orphans`。MIT License。
+来源页新增资料包导出/回收、基线修订表与冲突裁决；`backend/src/services/merge_service.py` 为三方合并引擎，`backend/src/models/merge.py` 存基线与资料包，路由在 `backend/src/routes/merge.py`。测试脚本、关键JSON/CSV、截图及已知差异在同批 `test-artifacts/gb-0026/TESTING.md`。本项目为单worker研究工具，无来源上传、任务崩溃恢复、多worker去重、真实设备或自动告警。清理仅本题：`docker compose down -v --remove-orphans`。MIT License。
